@@ -602,38 +602,42 @@ class Api:
             "connected": entry.get("command") == want_cmd,
         }
 
-    def build_mcpb(self):
-        """Builds motionlab.mcpb (Claude Desktop extension bundle) with this
-        machine's paths and returns its path."""
+    def build_plugin(self):
+        """Builds motionlab.plugin (Claude Desktop local plugin bundle) with
+        this machine's paths and returns its path."""
         import zipfile
 
         manifest = {
-            "dxt_version": "0.1",
-            "manifest_version": "0.2",
             "name": "motionlab",
-            "display_name": "MotionLab",
             "version": APP_VERSION,
-            "description": "Drive MotionLab from Claude: generate videos, images and edits on the local GPU, check render status, browse the library.",
+            "description": "Drive MotionLab from Claude: generate videos, images and edits on the local GPU, queue batches, check render status, browse the library.",
             "author": {"name": "Radakund Nemeth"},
-            "server": {
-                "type": "python",
-                "entry_point": "mcp_server.py",
-                "mcp_config": {
+        }
+        mcp = {
+            "mcpServers": {
+                "motionlab": {
                     "command": str(VENV_PY),
                     "args": [str(APP_DIR / "mcp_server.py")],
-                },
-            },
+                }
+            }
         }
-        target = ROOT / "motionlab.mcpb"
+        readme = (
+            "# MotionLab plugin\n\n"
+            "Lets Claude drive the MotionLab app on this machine: generate videos "
+            "(LTX-2), images (Ideogram 4) and edits (Qwen-Image-Edit), queue "
+            "batches, poll status and list outputs. MotionLab must be running.\n"
+        )
+        target = ROOT / "motionlab.plugin"
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            zf.writestr(".claude-plugin/plugin.json", json.dumps(manifest, indent=2))
+            zf.writestr(".mcp.json", json.dumps(mcp, indent=2))
+            zf.writestr("README.md", readme)
         return target
 
     def install_extension(self):
-        """Generates the extension bundle and reveals it for drag-and-drop
-        install (this Claude Desktop build registers no .mcpb file type)."""
+        """Generates the plugin bundle and reveals it for drag-into-chat install."""
         try:
-            target = self.build_mcpb()
+            target = self.build_plugin()
             subprocess.Popen(["explorer", "/select,", str(target)])
             return {"ok": True, "path": str(target)}
         except Exception as exc:
