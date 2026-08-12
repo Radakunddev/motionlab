@@ -524,21 +524,10 @@ class WorkflowBuilder:
                 return
             node["inputs"][key] = value
 
-        prompt_text = params["prompt"]
-        if not prompt_text.lstrip().startswith("{"):
-            # Official flow: the user idea is substituted into Ideogram's magic
-            # prompt template and the encoder conditions on that full text.
-            # Raw JSON captions (power users) pass through untouched.
-            tpl_path = self.template_path.parent / "ideogram_prompt_template.txt"
-            if tpl_path.is_file():
-                tpl = tpl_path.read_text(encoding="utf-8")
-                prompt_text = (
-                    tpl.replace("{{original_prompt}}", prompt_text)
-                    .replace("{{width}}", str(width))
-                    .replace("{{height}}", str(height))
-                )
-
-        set_input("@PROMPT", "text", prompt_text)
+        # The official workflow encodes the user's text as-is (plain language or
+        # a structured JSON caption). Its 28k-char "caption prompt template" is
+        # only a copy-paste helper for external LLMs, never encoder input.
+        set_input("@PROMPT", "text", params["prompt"])
         set_input("@NEGATIVE", "text", params.get("negative", ""), required=False)
         set_input("@LATENT", "width", width)
         set_input("@LATENT", "height", height)
@@ -554,6 +543,7 @@ class WorkflowBuilder:
 
         # Fall back to single-model CFG while the unconditional checkpoint is
         # still downloading (or was removed): drop the second UNETLoader link.
+        neutral_model = ["16", 0]
         uncond_node = self._by_title(graph, "@UNET_UNCOND")
         if uncond_node is not None and self.comfy_input_dir is not None:
             uncond_file = (
@@ -567,6 +557,38 @@ class WorkflowBuilder:
                 for nid, node in list(graph.items()):
                     if (node.get("_meta") or {}).get("title") == "@UNET_UNCOND":
                         del graph[nid]
+                neutral_model = ["1", 0]
+
+        # Filter bypass, always on: the model's baked-in safety filter false-
+        # positives on most prompts (even Ideogram's own README example). The
+        # first 2 steps run a neutral guider (no text), so the refusal
+        # attractor never forms; the prompt drives the remaining steps.
+        graph["50"] = {
+            "class_type": "SplitSigmas",
+            "_meta": {"title": "@SPLIT"},
+            "inputs": {"sigmas": ["13", 0], "step": 2},
+        }
+        graph["51"] = {
+            "class_type": "BasicGuider",
+            "_meta": {"title": "@NEUTRAL_GUIDER"},
+            "inputs": {"model": neutral_model, "conditioning": ["18", 0]},
+        }
+        graph["52"] = {
+            "class_type": "SamplerCustomAdvanced",
+            "_meta": {"title": "@SAMPLE_NEUTRAL"},
+            "inputs": {
+                "noise": ["11", 0],
+                "guider": ["51", 0],
+                "sampler": ["12", 0],
+                "sigmas": ["50", 0],
+                "latent_image": ["8", 0],
+            },
+        }
+        graph["53"] = {"class_type": "DisableNoise", "_meta": {"title": "@NONOISE"}, "inputs": {}}
+        sampler = self._by_title(graph, "@SAMPLE_IMG")
+        sampler["inputs"]["noise"] = ["53", 0]
+        sampler["inputs"]["sigmas"] = ["50", 1]
+        sampler["inputs"]["latent_image"] = ["52", 0]
 
         refs = list(params.get("ref_images") or [])[:3]
         if refs:
