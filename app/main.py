@@ -558,6 +558,64 @@ class Api:
         ensure_engine_async()
         return {"ok": True}
 
+    # ----------------------------------------------------- Claude Desktop
+
+    @staticmethod
+    def _claude_cfg_path():
+        appdata = os.environ.get("APPDATA", "")
+        return Path(appdata) / "Claude" / "claude_desktop_config.json" if appdata else None
+
+    def claude_link(self):
+        """Connection status of the Claude Desktop MCP integration."""
+        p = self._claude_cfg_path()
+        if p is None or not p.parent.is_dir():
+            return {"installed": False, "connected": False}
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+        except Exception:
+            cfg = {}
+        entry = ((cfg.get("mcpServers") or {}).get("motionlab") or {})
+        want_cmd = str(VENV_PY)
+        return {
+            "installed": True,
+            "connected": entry.get("command") == want_cmd,
+        }
+
+    def connect_claude(self):
+        """Adds (or repairs) the motionlab MCP server in Claude Desktop's config."""
+        p = self._claude_cfg_path()
+        if p is None or not p.parent.is_dir():
+            return {"ok": False, "error": "Claude Desktop is not installed. Get it from claude.ai/download, run it once, then connect again."}
+        try:
+            cfg = {}
+            if p.is_file():
+                p.with_suffix(".json.bak").write_bytes(p.read_bytes())
+                try:
+                    cfg = json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    cfg = {}
+            servers = cfg.setdefault("mcpServers", {})
+            servers["motionlab"] = {
+                "command": str(VENV_PY),
+                "args": [str(APP_DIR / "mcp_server.py")],
+            }
+            p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+            return {"ok": True}
+        except Exception as exc:
+            log.exception("connect_claude failed")
+            return {"ok": False, "error": str(exc)}
+
+    def disconnect_claude(self):
+        p = self._claude_cfg_path()
+        try:
+            if p and p.is_file():
+                cfg = json.loads(p.read_text(encoding="utf-8"))
+                if (cfg.get("mcpServers") or {}).pop("motionlab", None) is not None:
+                    p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+            return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
 
 # ---------------------------------------------------------------------- main
 

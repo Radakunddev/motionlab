@@ -317,6 +317,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .ref-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.claude-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+.claude-dot.on { background: var(--accent); }
+
 .ctx-menu {
   position: fixed; z-index: 70;
   min-width: 170px;

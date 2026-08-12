@@ -579,6 +579,26 @@ async function init() {
   });
   $("btnImageClear").addEventListener("click", () => setImage(null));
   $("btnFolder").addEventListener("click", () => call("open_outputs"));
+
+  refreshClaudeLink();
+  $("btnClaude").addEventListener("click", async () => {
+    const link = await call("claude_link");
+    if (!link.installed) {
+      toast("Claude Desktop is not installed. Get it from claude.ai/download, then try again.", "error");
+      return;
+    }
+    if (link.connected) {
+      if (window.confirm("Disconnect MotionLab from Claude Desktop?")) {
+        await call("disconnect_claude");
+        toast("Disconnected. Restart Claude Desktop to apply.");
+      }
+    } else {
+      const res = await call("connect_claude");
+      if (res.ok) toast("Connected. Restart Claude Desktop, then ask Claude to generate with MotionLab.");
+      else toast(res.error || "Could not connect.", "error", true);
+    }
+    refreshClaudeLink();
+  });
   $("btnCancel").addEventListener("click", async () => {
     if (state.activeJob) await call("cancel", state.activeJob.id);
   });
@@ -636,6 +656,17 @@ async function init() {
       loop();
     }, state.activeJob ? 700 : 1600);
   })();
+}
+
+async function refreshClaudeLink() {
+  try {
+    const link = await call("claude_link");
+    $("claudeDot").classList.toggle("on", !!link.connected);
+    $("btnClaudeLabel").textContent = link.connected ? "Claude linked" : "Claude";
+    $("btnClaude").title = link.connected
+      ? "Claude Desktop is connected. Click to disconnect."
+      : "Let Claude Desktop drive MotionLab (one click, MCP)";
+  } catch { /* bridge race at startup */ }
 }
 
 function pickChip(group, value) {
