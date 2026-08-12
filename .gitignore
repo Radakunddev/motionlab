@@ -1,0 +1,11 @@
+# heavy, machine-local, or generated: never in the repo
+engine/
+models_dl/
+outputs/
+logs/
+update_staging/
+dist/
+installer/dist/
+LTX-2/
+__pycache__/
+*.pyc
