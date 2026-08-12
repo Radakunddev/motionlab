@@ -563,8 +563,28 @@ class Api:
 
     @staticmethod
     def _claude_cfg_path():
-        appdata = os.environ.get("APPDATA", "")
-        return Path(appdata) / "Claude" / "claude_desktop_config.json" if appdata else None
+        candidates = []
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            candidates.append(Path(appdata) / "Claude")
+        candidates.append(Path.home() / "AppData" / "Roaming" / "Claude")
+        # Store/MSIX-packaged Claude Desktop virtualizes %APPDATA%\Claude into
+        # its package store; the junction may not be traversable from an
+        # unelevated process, but the real folder is.
+        local = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        try:
+            for pkg in sorted((local / "Packages").glob("Claude_*")):
+                candidates.append(pkg / "LocalCache" / "Roaming" / "Claude")
+        except OSError:
+            pass
+        for claude_dir in candidates:
+            try:
+                if claude_dir.is_dir():
+                    return claude_dir / "claude_desktop_config.json"
+            except OSError:
+                continue
+        log.warning("claude detect: no Claude dir under %s", [str(c) for c in candidates])
+        return None
 
     def claude_link(self):
         """Connection status of the Claude Desktop MCP integration."""
