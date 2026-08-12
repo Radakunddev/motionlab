@@ -9,3 +9,7 @@ installer/dist/
 LTX-2/
 __pycache__/
 *.pyc
+# generated per machine at runtime
+motionlab.plugin
+CLAUDE_API.md
+inbox/
