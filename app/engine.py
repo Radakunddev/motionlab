@@ -31,6 +31,10 @@ STAGE_BY_CLASS = {
     "LTXVAudioVAELoader": "Loading audio VAE",
     "LatentUpscaleModelLoader": "Loading upscaler",
     "CLIPTextEncode": "Encoding prompt",
+    "TextEncodeQwenImageEditPlus": "Encoding prompt",
+    "MotionLabRefEncode": "Encoding prompt",
+    "FluxKontextImageScale": "Preparing image",
+    "VAEEncode": "Encoding image",
     "SamplerCustomAdvanced": "Rendering",
     "SamplerCustom": "Rendering",
     "KSampler": "Rendering",
@@ -291,7 +295,8 @@ class ComfyClient:
                 return
             files = list(job.get("_files") or [])
 
-        is_image = (job["params"] or {}).get("mode") == "image"
+        mode = (job["params"] or {}).get("mode") or "video"
+        is_image = mode in ("image", "edit")
         wanted = (".png", ".jpg", ".jpeg", ".webp") if is_image else (".mp4", ".webm", ".mov", ".mkv")
         picked = None
         for item in files:
@@ -341,13 +346,13 @@ class ComfyClient:
         poster = None if is_image else self._make_poster(dest)
         meta = {
             "file": dest.name,
-            "type": "image" if is_image else "video",
+            "type": mode if mode in ("image", "edit") else "video",
             "poster": poster.name if poster else None,
             "prompt": job["prompt"],
             "params": job["params"],
             "created": _now_ms(),
             "render_ms": (_now_ms() - job["started"]) if job.get("started") else None,
-            "model": "Ideogram 4 (fp8)" if is_image else "LTX-2.3 22B distilled (GGUF)",
+            "model": {"image": "Ideogram 4 (fp8)", "edit": "Qwen-Image-Edit-2511 (Q4 GGUF)"}.get(mode, "LTX-2.3 22B distilled (GGUF)"),
         }
         try:
             dest.with_suffix(".json").write_text(
@@ -502,6 +507,32 @@ class WorkflowBuilder:
                 {"tile_size": 512, "overlap": 64, "temporal_size": 64, "temporal_overlap": 8}
             )
         return graph, frames, real_seconds
+
+    def build_edit(self, params, job_tag):
+        """Qwen-Image-Edit-2511 graph (lightning 4-step). The main image is
+        edited per the prompt; up to two extra reference images join through
+        the VL encoder + reference latents (identity-preserving)."""
+        graph = copy.deepcopy(self._load())
+
+        main_name = self._stage_image(params["image_path"], f"{job_tag}_m")
+        node = self._by_title(graph, "@EDIT_IMAGE")
+        node["inputs"]["image"] = main_name
+
+        for i, ref_path in enumerate(list(params.get("ref_images") or [])[:2], start=2):
+            name = self._stage_image(ref_path, f"{job_tag}_r{i}")
+            node_id = f"1{i}"
+            graph[node_id] = {
+                "class_type": "LoadImage",
+                "_meta": {"title": f"@REF{i}"},
+                "inputs": {"image": name},
+            }
+            for title in ("@PROMPT", "@NEGATIVE"):
+                self._by_title(graph, title)["inputs"][f"image{i}"] = [node_id, 0]
+
+        self._by_title(graph, "@PROMPT")["inputs"]["prompt"] = params["prompt"]
+        self._by_title(graph, "@SAMPLE_EDIT")["inputs"]["seed"] = int(params["seed"])
+        self._by_title(graph, "@SAVE")["inputs"]["filename_prefix"] = f"motionlab/{job_tag}"
+        return graph
 
     def build_image(self, params, job_tag):
         """Ideogram 4 text-to-image graph (Flux2 latent, 16 px grid).

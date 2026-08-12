@@ -175,7 +175,7 @@ function applyLibraryView() {
   const all = state.library || [];
   const q = (state.libQuery || "").trim().toLowerCase();
   const items = all.filter((it) => {
-    const type = it.type === "image" ? "image" : "video";
+    const type = (it.type === "image" || it.type === "edit") ? "image" : "video";
     if (state.libFilter !== "all" && type !== state.libFilter) return false;
     if (q && !`${it.prompt || ""} ${it.file || ""}`.toLowerCase().includes(q)) return false;
     return true;
@@ -191,10 +191,10 @@ function applyLibraryView() {
     const card = document.createElement("button");
     card.className = "card";
     card.type = "button";
-    if (item.type === "image") {
+    if (item.type === "image" || item.type === "edit") {
       card.innerHTML = `
         <img class="thumb" src="${item.url}" alt="" loading="lazy">
-        <span class="badge">IMG</span>
+        <span class="badge">${item.type === "edit" ? "EDIT" : "IMG"}</span>
         <p class="card-prompt">${escapeHtml(item.prompt || item.file)}</p>`;
     } else {
       const dur = (item.params && item.params.real_seconds) ? `${Math.round(item.params.real_seconds)}s` : "";
@@ -251,7 +251,7 @@ function escapeHtml(s) {
 
 function openViewer(item) {
   state.viewerItem = item;
-  const isImage = item.type === "image";
+  const isImage = item.type === "image" || item.type === "edit";
   $("viewerVideo").hidden = isImage;
   $("viewerImage").hidden = !isImage;
   if (isImage) {
@@ -299,6 +299,14 @@ async function generate() {
         seed: $("seed").value.trim() || "random",
         ref_images: state.refImages.map((r) => r.path),
       }
+    : state.mode === "edit"
+    ? {
+        mode: "edit",
+        prompt,
+        image_path: state.imagePath || "",
+        ref_images: state.refImages.map((r) => r.path),
+        seed: $("seed").value.trim() || "random",
+      }
     : {
         prompt,
         aspect: state.aspect,
@@ -307,6 +315,11 @@ async function generate() {
         seed: $("seed").value.trim() || "random",
         image_path: state.imagePath || "",
       };
+  if (state.mode === "edit" && !state.imagePath) {
+    toast("Pick the image to edit first (Image button).", "error");
+    $("btnGenerate").disabled = false;
+    return;
+  }
   const btn = $("btnGenerate");
   btn.disabled = true;
   try {
@@ -471,28 +484,41 @@ function deleteItem(item, fromViewer) {
   });
 }
 
+const REF_CAP = { image: 3, edit: 2 };
+
 function setMode(mode) {
   state.mode = mode;
   const image = mode === "image";
-  $("durationGroup").hidden = image;
-  $("qualityWrap").hidden = image;
+  const edit = mode === "edit";
+  $("durationGroup").hidden = image || edit;
+  $("qualityWrap").hidden = image || edit;
   $("imgSizeWrap").hidden = !image;
-  $("aspectGroup").hidden = image;
+  $("aspectGroup").hidden = image || edit;
   $("imgAspectGroup").hidden = !image;
   $("btnImageLabel").textContent = image ? "References" : "Image";
   $("btnImage").title = image
     ? "Add up to 3 reference images (experimental)"
-    : "Animate a starting image (image to video)";
-  $("btnImage").hidden = image ? state.refImages.length >= 3 : !!state.imagePath;
+    : edit
+      ? "Pick the image to edit, then up to 2 references (e.g. a character)"
+      : "Animate a starting image (image to video)";
+  const cap = REF_CAP[mode] || 0;
+  $("btnImage").hidden = image ? state.refImages.length >= cap
+    : edit ? (!!state.imagePath && state.refImages.length >= cap)
+    : !!state.imagePath;
   $("imagePill").hidden = image || !state.imagePath;
-  $("refPills").hidden = !image;
+  $("refPills").hidden = !(image || edit);
   $("prompt").placeholder = image
     ? "Describe your image. Subject, style, composition, text."
-    : "Describe your shot. Subject, camera, light, sound.";
+    : edit
+      ? "Describe the edit. What changes, what stays, who appears."
+      : "Describe your shot. Subject, camera, light, sound.";
   $("composerHint").textContent = image
     ? "Ideogram 4 renders locally. Great at posters, text and graphic styles. References are experimental. Ctrl+Enter also works."
-    : "Audio is generated with the video. Ctrl+Enter also works. Balanced and High need more memory, step up once Fast runs stable.";
-  $("btnGenerate").setAttribute("aria-label", image ? "Generate image" : "Generate video");
+    : edit
+      ? "Qwen-Image-Edit 2511, 4-step lightning. First image is edited; extra references carry identity (characters, objects)."
+      : "Audio is generated with the video. Ctrl+Enter also works. Balanced and High need more memory, step up once Fast runs stable.";
+  $("btnGenerate").setAttribute("aria-label", edit ? "Run edit" : image ? "Generate image" : "Generate video");
+  renderRefPills();
 }
 
 function renderRefPills() {
@@ -531,16 +557,17 @@ async function init() {
   });
   $("btnDice").addEventListener("click", () => { $("seed").value = ""; $("seed").focus(); });
   $("btnImage").addEventListener("click", async () => {
-    if (state.mode === "image") {
+    const wantRefs = state.mode === "image" || (state.mode === "edit" && state.imagePath);
+    if (wantRefs) {
       const res = await call("pick_image", true);
       if (!res.ok) {
         if (!res.cancelled) toast(res.error || "Could not open the file picker.", "error");
         return;
       }
-      const room = 3 - state.refImages.length;
+      const cap = REF_CAP[state.mode] || 3;
+      const room = cap - state.refImages.length;
       state.refImages.push(...(res.items || []).slice(0, room));
-      renderRefPills();
-      $("btnImage").hidden = state.refImages.length >= 3;
+      setMode(state.mode);
       return;
     }
     const res = await call("pick_image");
@@ -618,8 +645,6 @@ function pickChip(group, value) {
 
 function setImage(res) {
   state.imagePath = res ? res.path : null;
-  $("imagePill").hidden = !res;
-  $("btnImage").hidden = !!res;
   if (res) {
     $("imageName").textContent = res.name || "image";
     if (res.preview) { $("imageThumb").src = res.preview; $("imageThumb").hidden = false; }
@@ -627,6 +652,7 @@ function setImage(res) {
   } else {
     $("imageThumb").removeAttribute("src");
   }
+  setMode(state.mode);  // recomputes pill and button visibility per mode
 }
 
 if (window.pywebview && window.pywebview.api) init();

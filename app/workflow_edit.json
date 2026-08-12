@@ -1,0 +1,93 @@
+{
+  "1": {
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "@UNET"},
+    "inputs": {"unet_name": "qwen-image-edit-2511-Q4_K_M.gguf"}
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "@CLIP"},
+    "inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image"}
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "@VAE"},
+    "inputs": {"vae_name": "qwen_image_vae.safetensors"}
+  },
+  "4": {
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {"title": "@SHIFT"},
+    "inputs": {"model": ["1", 0], "shift": 3.1}
+  },
+  "5": {
+    "class_type": "CFGNorm",
+    "_meta": {"title": "@CFGNORM"},
+    "inputs": {"model": ["4", 0], "strength": 1.0}
+  },
+  "6": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "@LIGHTNING"},
+    "inputs": {"model": ["5", 0], "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", "strength_model": 1.0}
+  },
+  "10": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "@EDIT_IMAGE"},
+    "inputs": {"image": "mlab_placeholder.png"}
+  },
+  "11": {
+    "class_type": "FluxKontextImageScale",
+    "_meta": {"title": "@SCALE"},
+    "inputs": {"image": ["10", 0]}
+  },
+  "20": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {"title": "@PROMPT"},
+    "inputs": {"clip": ["2", 0], "prompt": "", "vae": ["3", 0], "image1": ["11", 0]}
+  },
+  "21": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {"title": "@NEGATIVE"},
+    "inputs": {"clip": ["2", 0], "prompt": "", "vae": ["3", 0], "image1": ["11", 0]}
+  },
+  "22": {
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {"title": "@REFMETHOD_POS"},
+    "inputs": {"conditioning": ["20", 0], "reference_latents_method": "index_timestep_zero"}
+  },
+  "23": {
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {"title": "@REFMETHOD_NEG"},
+    "inputs": {"conditioning": ["21", 0], "reference_latents_method": "index_timestep_zero"}
+  },
+  "30": {
+    "class_type": "VAEEncode",
+    "_meta": {"title": "@ENCODE"},
+    "inputs": {"pixels": ["11", 0], "vae": ["3", 0]}
+  },
+  "40": {
+    "class_type": "KSampler",
+    "_meta": {"title": "@SAMPLE_EDIT"},
+    "inputs": {
+      "model": ["6", 0],
+      "seed": 42,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["22", 0],
+      "negative": ["23", 0],
+      "latent_image": ["30", 0],
+      "denoise": 1.0
+    }
+  },
+  "41": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "@DECODE"},
+    "inputs": {"samples": ["40", 0], "vae": ["3", 0]}
+  },
+  "42": {
+    "class_type": "SaveImage",
+    "_meta": {"title": "@SAVE"},
+    "inputs": {"images": ["41", 0], "filename_prefix": "motionlab/edit"}
+  }
+}

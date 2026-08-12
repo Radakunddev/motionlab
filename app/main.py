@@ -55,6 +55,7 @@ except Exception:
 client = ComfyClient(ENGINE_HOST, ENGINE_PORT, COMFY_OUT, OUTPUTS)
 builder = WorkflowBuilder(APP_DIR / "workflow_t2v.json", COMFY_DIR / "input")
 builder_img = WorkflowBuilder(APP_DIR / "workflow_image.json", COMFY_DIR / "input")
+builder_edit = WorkflowBuilder(APP_DIR / "workflow_edit.json", COMFY_DIR / "input")
 window = None  # set in main()
 
 # Ideogram 4 output sizes, every edge on the 16 px Flux2 latent grid, max 2048.
@@ -212,6 +213,30 @@ class UiHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # quiet
         pass
 
+    def _json(self, obj, status=200):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        path = urlsplit_path(self.path)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        except Exception:
+            self._json({"ok": False, "error": "invalid JSON body"}, 400)
+            return
+        if path == "/api/generate":
+            self._json(api.generate(payload))
+        elif path == "/api/cancel":
+            self._json(api.cancel(payload.get("job_id", "")))
+        else:
+            self._json({"ok": False, "error": "unknown endpoint"}, 404)
+
     def _resolve(self):
         path = urlsplit_path(self.path)
         if path.startswith("/media/"):
@@ -227,6 +252,13 @@ class UiHandler(BaseHTTPRequestHandler):
         self._serve(head=True)
 
     def do_GET(self):
+        path = urlsplit_path(self.path)
+        if path == "/api/state":
+            self._json(api.get_state())
+            return
+        if path == "/api/library":
+            self._json({"ok": True, "items": api.library()[:40]})
+            return
         self._serve(head=False)
 
     def _serve(self, head):
@@ -343,6 +375,27 @@ class Api:
             quality = params.get("quality", "balanced")
             seconds = float(params.get("seconds", 4))
             headroom = commit_limit_gb() >= SAFE_COMMIT_GB
+
+            if params.get("mode") == "edit":
+                image_path = params.get("image_path")
+                if not image_path or not Path(image_path).is_file():
+                    return {"ok": False, "error": "Pick the image to edit first."}
+                seed = params.get("seed")
+                if seed in (None, "", "random"):
+                    seed = int.from_bytes(os.urandom(4), "big")
+                refs = [str(p) for p in (params.get("ref_images") or []) if p and Path(p).is_file()][:2]
+                job_params = {
+                    "mode": "edit",
+                    "prompt": prompt,
+                    "image_path": str(image_path),
+                    "ref_images": refs,
+                    "seed": int(seed),
+                    "steps": 4,
+                }
+                tag = f"mlab_{int(time.time())}"
+                graph = builder_edit.build_edit(job_params, tag)
+                job = client.submit(graph, job_params)
+                return {"ok": True, "job": job["id"], "seed": int(seed)}
 
             if params.get("mode") == "image":
                 size_key = params.get("img_size", "std")
@@ -524,6 +577,9 @@ def apply_window_icon(w):
         log.exception("window icon failed")
 
 
+api = Api()  # shared by the webview bridge and the local HTTP API
+
+
 def main():
     global window
     import webview
@@ -539,11 +595,18 @@ def main():
     updater.start_background_checks()
     port = start_ui_server()
     log.info("ui server on 127.0.0.1:%s (MotionLab %s)", port, APP_VERSION)
+    try:  # discovery file for the MCP bridge (Claude Desktop integration)
+        (LOGS / "runtime.json").write_text(
+            json.dumps({"ui_port": port, "pid": os.getpid(), "version": APP_VERSION}),
+            encoding="utf-8",
+        )
+    except Exception:
+        log.exception("runtime.json write failed")
 
     window = webview.create_window(
         "MotionLab",
         url=f"http://127.0.0.1:{port}/index.html",
-        js_api=Api(),
+        js_api=api,
         width=1280, height=880,
         min_size=(1080, 720),
         background_color="#131410",
