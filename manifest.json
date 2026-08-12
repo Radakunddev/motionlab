@@ -1,0 +1,6 @@
+﻿{
+    "version":  "1.0.0",
+    "zip_url":  "https://github.com/Radakunddev/motionlab/releases/download/v1.0.0/motionlab-app-1.0.0.zip",
+    "sha256":  "a3a638e8812c695288f21fe061bfa202508d83ccf076f0714f667e363d5fb200",
+    "notes":  "First public release: local LTX-2 video, Ideogram 4 images, Qwen-Image-Edit, Claude Desktop integration"
+}
