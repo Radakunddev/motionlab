@@ -594,20 +594,13 @@ async function init() {
       $("claudePop").hidden = true;
       return;
     }
-    const link = await call("claude_link").catch(() => null);
-    if (link && link.connected) {
-      openClaudePop(true);
-      return;
-    }
-    const res = await call("connect_claude");
+    call("connect_claude").catch(() => {});  // legacy config-file clients, best effort
+    const res = await call("install_extension");
     if (res.ok) {
       refreshClaudeDot();
       openClaudePop(false);
-    } else if (state.mcpUrl) {
-      try { await navigator.clipboard.writeText(state.mcpUrl); } catch { /* needs focus */ }
-      toast(`${res.error || "Claude Desktop not found."} For other MCP clients the endpoint URL is on your clipboard: ${state.mcpUrl}`, "error", true);
     } else {
-      toast(res.error || "Could not connect.", "error", true);
+      toast(res.error || "Could not hand the extension to Claude Desktop.", "error", true);
     }
   });
   $("claudePopClose").addEventListener("click", () => { $("claudePop").hidden = true; });
@@ -686,10 +679,10 @@ async function init() {
 function openClaudePop(alreadyConnected) {
   $("claudePopTitle").textContent = alreadyConnected
     ? "Claude Desktop connected"
-    : "Connected. One restart to go";
+    : "One click left, in Claude Desktop";
   $("claudePopHow").innerHTML = alreadyConnected
-    ? "No connector setup is needed. The tools live in Claude Desktop's <strong>tools menu</strong> (the sliders icon next to the message box)."
-    : "Now <strong>restart Claude Desktop</strong> (quit it from the tray too). After that the MotionLab tools appear in its <strong>tools menu</strong> (sliders icon next to the message box). No connector URL needed.";
+    ? "The MotionLab extension is installed. The tools live in Claude Desktop's <strong>tools menu</strong> (the sliders icon next to the message box)."
+    : "Claude Desktop is opening an <strong>install prompt</strong> for the MotionLab extension. Click <strong>Install</strong> there, and the tools appear in its <strong>tools menu</strong> (sliders icon next to the message box). If no prompt appeared: drag <strong>motionlab.mcpb</strong> from the MotionLab folder onto Claude Desktop's Settings, Extensions page.";
   $("claudePopUrl").textContent = state.mcpUrl || "endpoint starting...";
   $("claudePop").hidden = false;
 }

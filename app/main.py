@@ -602,6 +602,49 @@ class Api:
             "connected": entry.get("command") == want_cmd,
         }
 
+    def build_mcpb(self):
+        """Builds motionlab.mcpb (Claude Desktop extension bundle) with this
+        machine's paths and returns its path."""
+        import zipfile
+
+        manifest = {
+            "dxt_version": "0.1",
+            "manifest_version": "0.2",
+            "name": "motionlab",
+            "display_name": "MotionLab",
+            "version": APP_VERSION,
+            "description": "Drive MotionLab from Claude: generate videos, images and edits on the local GPU, check render status, browse the library.",
+            "author": {"name": "Radakund Nemeth"},
+            "server": {
+                "type": "python",
+                "entry_point": "mcp_server.py",
+                "mcp_config": {
+                    "command": str(VENV_PY),
+                    "args": [str(APP_DIR / "mcp_server.py")],
+                },
+            },
+        }
+        target = ROOT / "motionlab.mcpb"
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        return target
+
+    def install_extension(self):
+        """Generates the extension bundle and hands it to Claude Desktop."""
+        try:
+            target = self.build_mcpb()
+            os.startfile(str(target))  # noqa: S606  Claude Desktop owns .mcpb
+            return {"ok": True, "path": str(target)}
+        except OSError:
+            try:
+                subprocess.Popen(["explorer", "/select,", str(ROOT / "motionlab.mcpb")])
+            except Exception:
+                pass
+            return {"ok": False, "error": "Claude Desktop did not pick up the file. Drag motionlab.mcpb from the MotionLab folder onto Claude Desktop's Settings > Extensions page."}
+        except Exception as exc:
+            log.exception("install_extension failed")
+            return {"ok": False, "error": str(exc)}
+
     def connect_claude(self):
         """Adds (or repairs) the motionlab MCP server in Claude Desktop's config."""
         p = self._claude_cfg_path()
