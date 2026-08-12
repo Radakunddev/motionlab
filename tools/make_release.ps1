@@ -41,7 +41,7 @@ $Sha = (Get-FileHash $ZipPath -Algorithm SHA256).Hash.ToLower()
 # --- Fill OWNER/REPO once (also in app\update_config.json manifest_url).
 $manifest = [ordered]@{
   version = $Version
-  zip_url = "https://github.com/OWNER/REPO/releases/download/v$Version/$ZipName"
+  zip_url = "https://github.com/Radakunddev/motionlab/releases/download/v$Version/$ZipName"
   sha256  = $Sha
   notes   = $Notes
 }
