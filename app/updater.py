@@ -81,7 +81,7 @@ def check_once():
     if not url:
         return
     try:
-        manifest = json.loads(_fetch(url).decode("utf-8"))
+        manifest = json.loads(_fetch(url).decode("utf-8-sig"))
         remote = str(manifest.get("version", ""))
         if _ver_tuple(remote) <= _ver_tuple(_local_version()):
             return

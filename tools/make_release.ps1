@@ -45,7 +45,9 @@ $manifest = [ordered]@{
   sha256  = $Sha
   notes   = $Notes
 }
-$manifest | ConvertTo-Json | Set-Content -Path (Join-Path $Dist "manifest.json") -Encoding utf8
+# BOM-less UTF-8: a BOM would break strict JSON parsers polling the raw URL.
+$mjson = $manifest | ConvertTo-Json
+[System.IO.File]::WriteAllText((Join-Path $Dist "manifest.json"), $mjson, (New-Object System.Text.UTF8Encoding $false))
 Copy-Item (Join-Path $Dist "manifest.json") (Join-Path $Root "manifest.json") -Force
 
 Write-Host ""
