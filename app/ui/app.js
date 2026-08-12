@@ -297,7 +297,7 @@ async function generate() {
         aspect: state.imgAspect,
         img_size: $("imgSize").value,
         seed: $("seed").value.trim() || "random",
-        ref_images: state.refImages.map((r) => r.path),
+        ref_images: [],
       }
     : state.mode === "edit"
     ? {
@@ -488,36 +488,40 @@ function deleteItem(item, fromViewer) {
   });
 }
 
-const REF_CAP = { image: 3, edit: 2 };
+const REF_CAP = { edit: 2 };
+
+const MODE_MODEL = {
+  video: "LTX-2.3 · 22B distilled · runs locally",
+  image: "Ideogram 4 · 9.3B · runs locally",
+  edit: "Qwen-Image-Edit 2511 · 20B · runs locally",
+};
 
 function setMode(mode) {
   state.mode = mode;
   const image = mode === "image";
   const edit = mode === "edit";
+  $("modeModel").textContent = MODE_MODEL[mode] || "";
   $("durationGroup").hidden = image || edit;
   $("qualityWrap").hidden = image || edit;
   $("imgSizeWrap").hidden = !image;
   $("aspectGroup").hidden = image || edit;
   $("imgAspectGroup").hidden = !image;
-  $("btnImageLabel").textContent = image ? "References" : "Image";
-  $("btnImage").title = image
-    ? "Add up to 3 reference images (experimental)"
-    : edit
-      ? "Pick the image to edit, then up to 2 references (e.g. a character)"
-      : "Animate a starting image (image to video)";
+  $("btnImageLabel").textContent = "Image";
+  $("btnImage").title = edit
+    ? "Pick the image to edit, then up to 2 references (e.g. a character)"
+    : "Animate a starting image (image to video)";
   const cap = REF_CAP[mode] || 0;
-  $("btnImage").hidden = image ? state.refImages.length >= cap
-    : edit ? (!!state.imagePath && state.refImages.length >= cap)
-    : !!state.imagePath;
+  $("btnImage").hidden = image
+    || (edit ? (!!state.imagePath && state.refImages.length >= cap) : !!state.imagePath);
   $("imagePill").hidden = image || !state.imagePath;
-  $("refPills").hidden = !(image || edit);
+  $("refPills").hidden = !edit;
   $("prompt").placeholder = image
     ? "Describe your image. Subject, style, composition, text."
     : edit
       ? "Describe the edit. What changes, what stays, who appears."
       : "Describe your shot. Subject, camera, light, sound.";
   $("composerHint").textContent = image
-    ? "Ideogram 4 renders locally. Great at posters, text and graphic styles. References are experimental. Ctrl+Enter also works."
+    ? "Ideogram 4 renders locally. Great at posters, text and graphic styles. Ctrl+Enter also works."
     : edit
       ? "Qwen-Image-Edit 2511, 4-step lightning. First image is edited; extra references carry identity (characters, objects)."
       : "Audio is generated with the video. Ctrl+Enter also works. Balanced and High need more memory, step up once Fast runs stable.";
@@ -537,8 +541,7 @@ function renderRefPills() {
       <button class="pill-x" title="Remove reference" aria-label="Remove reference">&#10005;</button>`;
     pill.querySelector(".pill-x").addEventListener("click", () => {
       state.refImages.splice(i, 1);
-      renderRefPills();
-      $("btnImage").hidden = state.refImages.length >= 3;
+      setMode(state.mode);
     });
     wrap.appendChild(pill);
   });
@@ -562,7 +565,7 @@ async function init() {
   });
   $("btnDice").addEventListener("click", () => { $("seed").value = ""; $("seed").focus(); });
   $("btnImage").addEventListener("click", async () => {
-    const wantRefs = state.mode === "image" || (state.mode === "edit" && state.imagePath);
+    const wantRefs = state.mode === "edit" && state.imagePath;
     if (wantRefs) {
       const res = await call("pick_image", true);
       if (!res.ok) {

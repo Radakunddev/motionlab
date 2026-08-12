@@ -9,7 +9,10 @@
 <body>
 
 <header class="topbar">
-  <div class="wordmark" aria-label="MotionLab">MOTION<span>LAB</span></div>
+  <div class="brand-left">
+    <div class="wordmark" aria-label="MotionLab">MOTION<span>LAB</span></div>
+    <span class="byline">By Radakund Németh</span>
+  </div>
   <div class="topbar-right">
     <div class="engine-pill" id="enginePill" data-phase="offline" role="status">
       <span class="dot" aria-hidden="true"></span>
@@ -34,6 +37,7 @@
       <button class="chip" data-value="image" role="radio" aria-checked="false">Image</button>
       <button class="chip" data-value="edit" role="radio" aria-checked="false">Edit</button>
     </div>
+    <span class="mode-model" id="modeModel">LTX-2.3 · 22B distilled · runs locally</span>
     <textarea id="prompt" rows="3" spellcheck="false"
       placeholder="Describe your shot. Subject, camera, light, sound."></textarea>
     <div class="composer-foot">
