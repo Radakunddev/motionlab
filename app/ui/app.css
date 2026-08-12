@@ -317,6 +317,31 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .ref-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.popover {
+  position: fixed;
+  top: 62px; right: 20px;
+  z-index: 65;
+  width: 350px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 12px 32px oklch(0.08 0.004 125 / 0.5);
+}
+.popover h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+.popover p { margin: 0 0 10px; font-size: 12.5px; color: var(--text-2); }
+.popover p strong { color: var(--text); }
+.popover-try { border: 1px solid var(--line-soft); border-radius: 9px; padding: 8px 10px; color: var(--text) !important; }
+.popover-url { color: var(--text-3) !important; font-size: 11.5px !important; }
+.linklike {
+  background: none; border: none; padding: 0;
+  color: var(--text-2); cursor: pointer;
+  font-size: 11.5px; text-decoration: underline;
+  font-variant-numeric: tabular-nums;
+}
+.linklike:hover { color: var(--text); }
+.popover-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
 .claude-dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--text-3);

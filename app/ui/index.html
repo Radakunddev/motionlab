@@ -164,6 +164,18 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="ctx-menu" id="ctxMenu" hidden role="menu"></div>
 
+<div class="popover" id="claudePop" hidden role="dialog" aria-label="Claude connection">
+  <h3 id="claudePopTitle">Claude Desktop connected</h3>
+  <p>Claude can drive MotionLab in chat: start videos, images and edits, pass prompts and reference images, check render status, browse your library. Everything still renders on this machine.</p>
+  <p id="claudePopHow">No connector setup is needed. The tools live in Claude Desktop's <strong>tools menu</strong> (the sliders icon next to the message box). Restart Claude Desktop once after connecting.</p>
+  <p class="popover-try">Try asking Claude: "Generate a 4 second video of a stormy sea with MotionLab."</p>
+  <p class="popover-url">Other MCP clients (Cursor, VS Code): <button class="linklike" id="claudePopUrl" title="Copy endpoint URL"></button></p>
+  <div class="popover-actions">
+    <button class="btn danger-ghost small" id="claudePopDisconnect">Disconnect</button>
+    <button class="btn ghost small" id="claudePopClose">Close</button>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

@@ -556,6 +556,7 @@ async function init() {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) generate();
     if (e.key === "Escape") {
       if (!$("ctxMenu").hidden) hideCtxMenu();
+      else if (!$("claudePop").hidden) $("claudePop").hidden = true;
       else if (!$("viewer").hidden) closeViewer();
     }
   });
@@ -586,25 +587,36 @@ async function init() {
 
   refreshClaudeDot();
   $("btnClaude").addEventListener("click", async () => {
+    if (!$("claudePop").hidden) {
+      $("claudePop").hidden = true;
+      return;
+    }
     const link = await call("claude_link").catch(() => null);
     if (link && link.connected) {
-      if (window.confirm("Claude Desktop is already connected. Disconnect?")) {
-        await call("disconnect_claude");
-        toast("Disconnected. Restart Claude Desktop to apply.");
-      }
-      refreshClaudeDot();
+      openClaudePop(true);
       return;
     }
     const res = await call("connect_claude");
     if (res.ok) {
-      toast("Connected. Restart Claude Desktop, then MotionLab shows up among its tools (no connector URL needed).", "ok", true);
+      refreshClaudeDot();
+      openClaudePop(false);
     } else if (state.mcpUrl) {
       try { await navigator.clipboard.writeText(state.mcpUrl); } catch { /* needs focus */ }
       toast(`${res.error || "Claude Desktop not found."} For other MCP clients the endpoint URL is on your clipboard: ${state.mcpUrl}`, "error", true);
     } else {
       toast(res.error || "Could not connect.", "error", true);
     }
+  });
+  $("claudePopClose").addEventListener("click", () => { $("claudePop").hidden = true; });
+  $("claudePopDisconnect").addEventListener("click", async () => {
+    await call("disconnect_claude");
+    $("claudePop").hidden = true;
+    toast("Disconnected. Restart Claude Desktop to apply.");
     refreshClaudeDot();
+  });
+  $("claudePopUrl").addEventListener("click", async () => {
+    if (!state.mcpUrl) return;
+    try { await navigator.clipboard.writeText(state.mcpUrl); toast("Endpoint URL copied."); } catch { /* focus */ }
   });
   $("btnCancel").addEventListener("click", async () => {
     if (state.activeJob) await call("cancel", state.activeJob.id);
@@ -624,6 +636,9 @@ async function init() {
 
   document.addEventListener("click", (e) => {
     if (!$("ctxMenu").hidden && !$("ctxMenu").contains(e.target)) hideCtxMenu();
+    if (!$("claudePop").hidden && !$("claudePop").contains(e.target) && !$("btnClaude").contains(e.target)) {
+      $("claudePop").hidden = true;
+    }
   });
   document.addEventListener("scroll", hideCtxMenu, true);
   window.addEventListener("blur", hideCtxMenu);
@@ -663,6 +678,17 @@ async function init() {
       loop();
     }, state.activeJob ? 700 : 1600);
   })();
+}
+
+function openClaudePop(alreadyConnected) {
+  $("claudePopTitle").textContent = alreadyConnected
+    ? "Claude Desktop connected"
+    : "Connected. One restart to go";
+  $("claudePopHow").innerHTML = alreadyConnected
+    ? "No connector setup is needed. The tools live in Claude Desktop's <strong>tools menu</strong> (the sliders icon next to the message box)."
+    : "Now <strong>restart Claude Desktop</strong> (quit it from the tray too). After that the MotionLab tools appear in its <strong>tools menu</strong> (sliders icon next to the message box). No connector URL needed.";
+  $("claudePopUrl").textContent = state.mcpUrl || "endpoint starting...";
+  $("claudePop").hidden = false;
 }
 
 async function refreshClaudeDot() {
