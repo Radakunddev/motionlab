@@ -630,17 +630,12 @@ class Api:
         return target
 
     def install_extension(self):
-        """Generates the extension bundle and hands it to Claude Desktop."""
+        """Generates the extension bundle and reveals it for drag-and-drop
+        install (this Claude Desktop build registers no .mcpb file type)."""
         try:
             target = self.build_mcpb()
-            os.startfile(str(target))  # noqa: S606  Claude Desktop owns .mcpb
+            subprocess.Popen(["explorer", "/select,", str(target)])
             return {"ok": True, "path": str(target)}
-        except OSError:
-            try:
-                subprocess.Popen(["explorer", "/select,", str(ROOT / "motionlab.mcpb")])
-            except Exception:
-                pass
-            return {"ok": False, "error": "Claude Desktop did not pick up the file. Drag motionlab.mcpb from the MotionLab folder onto Claude Desktop's Settings > Extensions page."}
         except Exception as exc:
             log.exception("install_extension failed")
             return {"ok": False, "error": str(exc)}

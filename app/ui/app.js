@@ -682,7 +682,7 @@ function openClaudePop(alreadyConnected) {
     : "One click left, in Claude Desktop";
   $("claudePopHow").innerHTML = alreadyConnected
     ? "The MotionLab extension is installed. The tools live in Claude Desktop's <strong>tools menu</strong> (the sliders icon next to the message box)."
-    : "Claude Desktop is opening an <strong>install prompt</strong> for the MotionLab extension. Click <strong>Install</strong> there, and the tools appear in its <strong>tools menu</strong> (sliders icon next to the message box). If no prompt appeared: drag <strong>motionlab.mcpb</strong> from the MotionLab folder onto Claude Desktop's Settings, Extensions page.";
+    : "An Explorer window just opened with <strong>motionlab.mcpb</strong> selected. In Claude Desktop open <strong>Settings, Extensions</strong>, then <strong>drag the file onto that page</strong> and click Install. The tools then appear in the tools menu (sliders icon next to the message box).";
   $("claudePopUrl").textContent = state.mcpUrl || "endpoint starting...";
   $("claudePop").hidden = false;
 }
