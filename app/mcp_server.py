@@ -142,6 +142,62 @@ def edit_image(prompt: str, image_path: str, ref_image_paths: list[str] = [],
 
 
 @mcp.tool()
+def queue_jobs(jobs: list[dict]) -> dict:
+    """Queue several generations in one call; they render one after another
+    and all show up in the MotionLab window's queue. Each item needs a "type"
+    (video | image | edit) plus that type's fields:
+    video: prompt, seconds?, aspect?, quality?, start_image_path?, seed?
+    image: prompt, aspect?, size?, seed?
+    edit:  prompt, image_path, ref_image_paths?, seed?
+    Returns the job ids in queue order; poll them with job_status."""
+    queued, errors = [], []
+    for i, item in enumerate(jobs or []):
+        kind = (item.get("type") or "video").lower()
+        seed = item.get("seed", -1)
+        if kind == "image":
+            params = {
+                "mode": "image", "prompt": item.get("prompt", ""),
+                "aspect": item.get("aspect", "1:1"),
+                "img_size": item.get("size", "std"),
+                "ref_images": [],
+                "seed": "random" if (not isinstance(seed, int) or seed < 0) else seed,
+            }
+        elif kind == "edit":
+            params = {
+                "mode": "edit", "prompt": item.get("prompt", ""),
+                "image_path": item.get("image_path", ""),
+                "ref_images": list(item.get("ref_image_paths") or [])[:2],
+                "seed": "random" if (not isinstance(seed, int) or seed < 0) else seed,
+            }
+        else:
+            params = {
+                "prompt": item.get("prompt", ""),
+                "seconds": item.get("seconds", 4),
+                "aspect": item.get("aspect", "16:9"),
+                "quality": item.get("quality", "fast"),
+                "image_path": item.get("start_image_path", ""),
+                "seed": "random" if (not isinstance(seed, int) or seed < 0) else seed,
+            }
+        res = _call("POST", "/api/generate", params)
+        if res.get("ok"):
+            queued.append({"index": i, "type": kind, "job_id": res["job"],
+                           "seed": res.get("seed"), "prompt": (item.get("prompt") or "")[:60]})
+        else:
+            errors.append({"index": i, "type": kind, "error": res.get("error")})
+    out = {"ok": len(errors) == 0, "queued": queued,
+           "note": "jobs render sequentially on the local GPU; poll with job_status"}
+    if errors:
+        out["errors"] = errors
+    return out
+
+
+@mcp.tool()
+def cancel_job(job_id: str) -> dict:
+    """Cancel a queued or running MotionLab job."""
+    return _call("POST", "/api/cancel", {"job_id": job_id})
+
+
+@mcp.tool()
 def job_status(job_id: str) -> dict:
     """Status of a render job: stage, step progress, and the output file path
     once done."""
