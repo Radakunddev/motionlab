@@ -625,12 +625,71 @@ class Api:
             "# MotionLab plugin\n\n"
             "Lets Claude drive the MotionLab app on this machine: generate videos "
             "(LTX-2), images (Ideogram 4) and edits (Qwen-Image-Edit), queue "
-            "batches, poll status and list outputs. MotionLab must be running.\n"
+            "batches, poll status and list outputs.\n"
         )
+        skill = f"""---
+name: motionlab
+description: Drive the MotionLab app on this machine to generate videos (LTX-2 with audio), images (Ideogram 4) and identity-preserving image edits (Qwen-Image-Edit) on the local GPU. Use whenever the user mentions MotionLab, or asks to generate/queue video, image or edit locally, check render status, or list generated files.
+---
+
+# Driving MotionLab
+
+MotionLab is a local generative studio at `{ROOT}`. It exposes a small HTTP
+API while running. Everything renders on this machine's GPU; renders take
+minutes, so queue jobs and poll rather than wait synchronously.
+
+## 1. Ensure the app is running
+
+Read `{ROOT}\\logs\\runtime.json` -> `ui_port` (and `pid`). Verify with
+`GET http://127.0.0.1:<ui_port>/api/state`. If unreachable, start the app:
+
+```
+cmd /c start "" "{ROOT}\\MotionLab.bat"
+```
+
+then re-read runtime.json (it is rewritten on boot) and wait for
+`/api/state` to answer. `engine` cycles offline -> starting -> ready; first
+boot takes 1-2 minutes. Generation requires `engine: "ready"`.
+
+## 2. Generate
+
+`POST http://127.0.0.1:<ui_port>/api/generate` with JSON. Three shapes:
+
+Video (LTX-2, audio included): `{{"prompt": "...", "seconds": 4, "aspect": "16:9", "quality": "fast", "seed": "random", "image_path": ""}}`
+- seconds: 2-12 (over 8 needs the machine's big pagefile; the API refuses with a clear error if not allowed)
+- aspect: 16:9 | 9:16 | 1:1; quality: fast | balanced | high | ultra (ultra caps at 4 s)
+- image_path: absolute path of a start image -> image-to-video
+
+Image (Ideogram 4, good at posters/text): `{{"mode": "image", "prompt": "...", "aspect": "1:1", "img_size": "std", "seed": "random", "ref_images": []}}`
+- aspect: 1:1 | 16:9 | 9:16 | 4:3 | 3:4 | 3:2 | 2:3 | 21:9; img_size: std | large | xl
+
+Edit (Qwen-Image-Edit, keeps identity): `{{"mode": "edit", "prompt": "what changes", "image_path": "abs path of image to edit", "ref_images": ["up to 2 abs paths carrying identity"], "seed": "random"}}`
+
+Response: `{{"ok": true, "job": "<id>", "seed": N}}` or `{{"ok": false, "error": "..."}}`.
+Queue several by POSTing repeatedly; jobs render strictly one at a time and
+all appear in the app window's queue.
+
+## 3. Poll and deliver
+
+`GET /api/state` -> `jobs[]` with `id, status (queued|running|done|error),
+stage, step, steps, output`. Poll every 20-30 s; do not block the
+conversation. When `done`, the file is `{ROOT}\\outputs\\<output>` (mp4 for
+video, png for images) with a same-name .json sidecar and .jpg poster for
+videos. Tell the user the absolute path. `GET /api/library` lists recent
+outputs. Cancel with `POST /api/cancel` body `{{"job_id": "..."}}`.
+
+PowerShell example:
+
+```
+$s = irm http://127.0.0.1:PORT/api/state
+irm http://127.0.0.1:PORT/api/generate -Method Post -ContentType 'application/json' -Body '{{"prompt":"...","seconds":4,"quality":"fast","aspect":"16:9","seed":"random","image_path":""}}'
+```
+"""
         target = ROOT / "motionlab.plugin"
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(".claude-plugin/plugin.json", json.dumps(manifest, indent=2))
             zf.writestr(".mcp.json", json.dumps(mcp, indent=2))
+            zf.writestr("skills/motionlab/SKILL.md", skill)
             zf.writestr("README.md", readme)
         return target
 
