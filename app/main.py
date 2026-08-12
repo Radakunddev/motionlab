@@ -352,6 +352,7 @@ class Api:
             "version": APP_VERSION,
             "update": {"version": updater.state["available"], "notes": updater.state["notes"]}
                       if updater.state["available"] else None,
+            "mcp_url": f"http://127.0.0.1:{mcp_state['port']}/mcp" if mcp_state.get("port") else None,
             "now": int(time.time() * 1000),
         }
 
@@ -637,6 +638,26 @@ def apply_window_icon(w):
 
 api = Api()  # shared by the webview bridge and the local HTTP API
 
+MCP_PORT = 8765
+mcp_state = {"port": None}
+
+
+def start_mcp_server():
+    """Runs the MCP server (HTTP transport) in a background thread so Claude
+    Desktop can connect via Settings -> Connectors with a plain URL."""
+    def run():
+        try:
+            import mcp_server
+
+            mcp_server.run_http(MCP_PORT)
+        except Exception:
+            log.exception("mcp http server failed")
+            mcp_state["port"] = None
+
+    mcp_state["port"] = MCP_PORT
+    threading.Thread(target=run, name="mcp-http", daemon=True).start()
+    return MCP_PORT
+
 
 def main():
     global window
@@ -653,9 +674,10 @@ def main():
     updater.start_background_checks()
     port = start_ui_server()
     log.info("ui server on 127.0.0.1:%s (MotionLab %s)", port, APP_VERSION)
+    mcp_port = start_mcp_server()
     try:  # discovery file for the MCP bridge (Claude Desktop integration)
         (LOGS / "runtime.json").write_text(
-            json.dumps({"ui_port": port, "pid": os.getpid(), "version": APP_VERSION}),
+            json.dumps({"ui_port": port, "mcp_port": mcp_port, "pid": os.getpid(), "version": APP_VERSION}),
             encoding="utf-8",
         )
     except Exception:

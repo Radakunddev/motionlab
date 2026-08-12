@@ -191,5 +191,11 @@ def list_library(query: str = "", type: str = "all", limit: int = 10) -> dict:
     return {"ok": True, "items": items}
 
 
+def run_http(port=8765):
+    """Serve MCP over streamable HTTP on 127.0.0.1 (for Claude Desktop's
+    Settings -> Connectors -> Add custom connector)."""
+    mcp.run(transport="http", host="127.0.0.1", port=port, show_banner=False)
+
+
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run()  # stdio (claude_desktop_config.json style)

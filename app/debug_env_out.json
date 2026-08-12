@@ -1,0 +1,12 @@
+{
+  "APPDATA": "C:\\Users\\User\\AppData\\Roaming",
+  "path": "C:\\Users\\User\\AppData\\Roaming\\Claude\\claude_desktop_config.json",
+  "parent_is_dir": true,
+  "file_exists": true,
+  "motionlab_entry": {
+    "command": "C:\\Users\\User\\motionlab\\engine\\venv\\Scripts\\python.exe",
+    "args": [
+      "C:\\Users\\User\\motionlab\\app\\mcp_server.py"
+    ]
+  }
+}

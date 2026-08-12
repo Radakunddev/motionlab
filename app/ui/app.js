@@ -358,6 +358,14 @@ async function poll(fast = false) {
     refreshDurations();
   }
 
+  if (s.mcp_url !== state.mcpUrl) {
+    state.mcpUrl = s.mcp_url || null;
+    $("claudeDot").classList.toggle("on", !!state.mcpUrl);
+    $("btnClaude").title = state.mcpUrl
+      ? `Claude connector live at ${state.mcpUrl}. Click to copy the URL.`
+      : "Connector endpoint starting...";
+  }
+
   if (s.update && s.update.version && !state.updateNotified) {
     state.updateNotified = true;
     toast(`Update ${s.update.version} is ready${s.update.notes ? `: ${s.update.notes}` : ""}. It installs on the next app start.`, "ok", true);
@@ -580,24 +588,13 @@ async function init() {
   $("btnImageClear").addEventListener("click", () => setImage(null));
   $("btnFolder").addEventListener("click", () => call("open_outputs"));
 
-  refreshClaudeLink();
   $("btnClaude").addEventListener("click", async () => {
-    const link = await call("claude_link");
-    if (!link.installed) {
-      toast("Claude Desktop is not installed. Get it from claude.ai/download, then try again.", "error");
+    if (!state.mcpUrl) {
+      toast("The MotionLab connector endpoint is not up yet, try again in a few seconds.", "error");
       return;
     }
-    if (link.connected) {
-      if (window.confirm("Disconnect MotionLab from Claude Desktop?")) {
-        await call("disconnect_claude");
-        toast("Disconnected. Restart Claude Desktop to apply.");
-      }
-    } else {
-      const res = await call("connect_claude");
-      if (res.ok) toast("Connected. Restart Claude Desktop, then ask Claude to generate with MotionLab.");
-      else toast(res.error || "Could not connect.", "error", true);
-    }
-    refreshClaudeLink();
+    try { await navigator.clipboard.writeText(state.mcpUrl); } catch { /* clipboard may need focus */ }
+    toast(`Connector URL copied: ${state.mcpUrl}. In Claude Desktop: Settings > Connectors > Add custom connector > paste the URL.`, "ok", true);
   });
   $("btnCancel").addEventListener("click", async () => {
     if (state.activeJob) await call("cancel", state.activeJob.id);
@@ -656,17 +653,6 @@ async function init() {
       loop();
     }, state.activeJob ? 700 : 1600);
   })();
-}
-
-async function refreshClaudeLink() {
-  try {
-    const link = await call("claude_link");
-    $("claudeDot").classList.toggle("on", !!link.connected);
-    $("btnClaudeLabel").textContent = link.connected ? "Claude linked" : "Claude";
-    $("btnClaude").title = link.connected
-      ? "Claude Desktop is connected. Click to disconnect."
-      : "Let Claude Desktop drive MotionLab (one click, MCP)";
-  } catch { /* bridge race at startup */ }
 }
 
 function pickChip(group, value) {
