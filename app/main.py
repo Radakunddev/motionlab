@@ -634,56 +634,15 @@ description: Drive the MotionLab app on this machine to generate videos (LTX-2 w
 
 # Driving MotionLab
 
-MotionLab is a local generative studio at `{ROOT}`. It exposes a small HTTP
-API while running. Everything renders on this machine's GPU; renders take
-minutes, so queue jobs and poll rather than wait synchronously.
+MotionLab lives at `{ROOT}` on this machine. Read
+`{ROOT}\\CLAUDE_API.md` and follow it exactly; it is kept current by the app.
 
-## 1. Ensure the app is running
-
-Read `{ROOT}\\logs\\runtime.json` -> `ui_port` (and `pid`). Verify with
-`GET http://127.0.0.1:<ui_port>/api/state`. If unreachable, start the app:
-
-```
-cmd /c start "" "{ROOT}\\MotionLab.bat"
-```
-
-then re-read runtime.json (it is rewritten on boot) and wait for
-`/api/state` to answer. `engine` cycles offline -> starting -> ready; first
-boot takes 1-2 minutes. Generation requires `engine: "ready"`.
-
-## 2. Generate
-
-`POST http://127.0.0.1:<ui_port>/api/generate` with JSON. Three shapes:
-
-Video (LTX-2, audio included): `{{"prompt": "...", "seconds": 4, "aspect": "16:9", "quality": "fast", "seed": "random", "image_path": ""}}`
-- seconds: 2-12 (over 8 needs the machine's big pagefile; the API refuses with a clear error if not allowed)
-- aspect: 16:9 | 9:16 | 1:1; quality: fast | balanced | high | ultra (ultra caps at 4 s)
-- image_path: absolute path of a start image -> image-to-video
-
-Image (Ideogram 4, good at posters/text): `{{"mode": "image", "prompt": "...", "aspect": "1:1", "img_size": "std", "seed": "random", "ref_images": []}}`
-- aspect: 1:1 | 16:9 | 9:16 | 4:3 | 3:4 | 3:2 | 2:3 | 21:9; img_size: std | large | xl
-
-Edit (Qwen-Image-Edit, keeps identity): `{{"mode": "edit", "prompt": "what changes", "image_path": "abs path of image to edit", "ref_images": ["up to 2 abs paths carrying identity"], "seed": "random"}}`
-
-Response: `{{"ok": true, "job": "<id>", "seed": N}}` or `{{"ok": false, "error": "..."}}`.
-Queue several by POSTing repeatedly; jobs render strictly one at a time and
-all appear in the app window's queue.
-
-## 3. Poll and deliver
-
-`GET /api/state` -> `jobs[]` with `id, status (queued|running|done|error),
-stage, step, steps, output`. Poll every 20-30 s; do not block the
-conversation. When `done`, the file is `{ROOT}\\outputs\\<output>` (mp4 for
-video, png for images) with a same-name .json sidecar and .jpg poster for
-videos. Tell the user the absolute path. `GET /api/library` lists recent
-outputs. Cancel with `POST /api/cancel` body `{{"job_id": "..."}}`.
-
-PowerShell example:
-
-```
-$s = irm http://127.0.0.1:PORT/api/state
-irm http://127.0.0.1:PORT/api/generate -Method Post -ContentType 'application/json' -Body '{{"prompt":"...","seconds":4,"quality":"fast","aspect":"16:9","seed":"random","image_path":""}}'
-```
+Essentials: renders run locally and take minutes, so queue then poll.
+Preferred transport is the file bridge (works from sandboxed shells): write a
+job JSON into `{ROOT}\\inbox\\`, read the .result.json that appears next to
+it, poll `{ROOT}\\inbox\\state.json`, and hand the user the finished file
+path from `{ROOT}\\outputs\\`. If the app is not running, start
+`{ROOT}\\MotionLab.bat` and wait for the engine to be ready.
 """
         target = ROOT / "motionlab.plugin"
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -759,6 +718,111 @@ def apply_window_icon(w):
 
 api = Api()  # shared by the webview bridge and the local HTTP API
 
+INBOX = ROOT / "inbox"
+
+
+def start_inbox_bridge():
+    """File-based job bridge for sandboxed Claude sessions that cannot reach
+    localhost: drop <name>.json with generate params into inbox\\, get
+    <name>.result.json back; poll inbox\\state.json for progress."""
+    INBOX.mkdir(exist_ok=True)
+    (INBOX / "done").mkdir(exist_ok=True)
+
+    def mirror():
+        while True:
+            try:
+                (INBOX / "state.json").write_text(
+                    json.dumps(api.get_state(), ensure_ascii=False), encoding="utf-8"
+                )
+            except Exception:
+                pass
+            time.sleep(3)
+
+    def watch():
+        while True:
+            try:
+                for f in sorted(INBOX.glob("*.json")):
+                    if f.name == "state.json" or f.name.endswith(".result.json"):
+                        continue
+                    try:
+                        if time.time() - f.stat().st_mtime < 1.0:
+                            continue  # possibly still being written
+                        params = json.loads(f.read_text(encoding="utf-8-sig"))
+                        if isinstance(params, dict) and params.get("cancel"):
+                            res = api.cancel(str(params["cancel"]))
+                        else:
+                            res = api.generate(params)
+                    except Exception as exc:
+                        res = {"ok": False, "error": str(exc)}
+                    (INBOX / (f.stem + ".result.json")).write_text(
+                        json.dumps(res, ensure_ascii=False), encoding="utf-8"
+                    )
+                    try:
+                        f.replace(INBOX / "done" / f.name)
+                    except OSError:
+                        try:
+                            f.unlink()
+                        except OSError:
+                            pass
+            except Exception:
+                log.exception("inbox watch failed")
+            time.sleep(2)
+
+    threading.Thread(target=mirror, name="inbox-mirror", daemon=True).start()
+    threading.Thread(target=watch, name="inbox-watch", daemon=True).start()
+
+
+def write_claude_api_doc():
+    """Maintains CLAUDE_API.md: the protocol document the plugin skill points
+    Claude at. Living in the app folder, it updates with the app, without
+    needing a plugin re-install."""
+    doc = f"""# Driving MotionLab (for Claude)
+
+MotionLab root: `{ROOT}`. Renders run on the local GPU and take minutes:
+queue, then poll. Two transports; use B when localhost HTTP is unreachable
+(sandboxed shells).
+
+## A. HTTP (when reachable)
+
+Port: read `{ROOT}\\logs\\runtime.json` -> `ui_port`.
+- `GET  /api/state` - engine phase + jobs (id, status, stage, step, output)
+- `POST /api/generate` - body below; returns {{"ok": true, "job": id, "seed": n}}
+- `POST /api/cancel` - {{"job_id": "..."}}
+- `GET  /api/library` - recent outputs
+
+## B. File bridge (always works with folder access)
+
+- Write params as JSON to `{ROOT}\\inbox\\job_<timestamp>.json`
+- Within ~3 s the app writes `job_<timestamp>.result.json` next to it
+  ({{"ok": true, "job": id}} or an error)
+- Poll `{ROOT}\\inbox\\state.json` (rewritten every 3 s) for engine phase and
+  job progress; wait for your job id to reach status "done"
+- Cancel: write {{"cancel": "<job_id>"}} as a new job file
+- If the app is not running (state.json stale): start it with
+  `cmd /c start "" "{ROOT}\\MotionLab.bat"` and wait 1-2 minutes.
+
+## Generate bodies
+
+Video (LTX-2, audio included):
+{{"prompt": "...", "seconds": 4, "aspect": "16:9", "quality": "fast", "seed": "random", "image_path": ""}}
+- seconds 2-12; aspect 16:9|9:16|1:1; quality fast|balanced|high|ultra
+- image_path: absolute path -> image-to-video
+Image (Ideogram 4, posters/text):
+{{"mode": "image", "prompt": "...", "aspect": "1:1", "img_size": "std", "seed": "random", "ref_images": []}}
+- aspect 1:1|16:9|9:16|4:3|3:4|3:2|2:3|21:9; img_size std|large|xl
+Edit (Qwen-Image-Edit, keeps identity):
+{{"mode": "edit", "prompt": "the change", "image_path": "abs path", "ref_images": ["<= 2 abs paths"], "seed": "random"}}
+
+Finished files land in `{ROOT}\\outputs\\` (mp4/png + .json sidecar; videos
+get a .jpg poster). Report the absolute path to the user. Memory rules the
+API enforces itself: one render at a time, some duration/quality combos are
+locked until the machine's pagefile is enlarged; surface its error messages.
+"""
+    try:
+        (ROOT / "CLAUDE_API.md").write_text(doc, encoding="utf-8")
+    except Exception:
+        log.exception("CLAUDE_API.md write failed")
+
 MCP_PORT = 8765
 mcp_state = {"port": None}
 
@@ -796,6 +860,8 @@ def main():
     port = start_ui_server()
     log.info("ui server on 127.0.0.1:%s (MotionLab %s)", port, APP_VERSION)
     mcp_port = start_mcp_server()
+    start_inbox_bridge()
+    write_claude_api_doc()
     try:  # discovery file for the MCP bridge (Claude Desktop integration)
         (LOGS / "runtime.json").write_text(
             json.dumps({"ui_port": port, "mcp_port": mcp_port, "pid": os.getpid(), "version": APP_VERSION}),
