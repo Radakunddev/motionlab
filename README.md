@@ -52,6 +52,12 @@ GUI alternative: Win+R, `sysdm.cpl`, Advanced, Performance Settings, Advanced, V
 
 After that, removing `--cache-none` from `app\main.py` makes back-to-back renders much faster (models stay warm).
 
+## Sharing and updates
+
+- `installer\dist\MotionLab-Setup-<version>.exe` is the shareable installer (about 2 MB, no admin needed). It installs the app layer to `%LOCALAPPDATA%\MotionLab`; the first launch downloads the engine, the Python environment and the models from their original sources (LTX pack required, Ideogram pack optional Y/N). Recipients need an NVIDIA GPU (8 GB VRAM minimum) and 45+ GB free disk.
+- Self-update: the app polls the `manifest_url` set in `app\update_config.json` every 6 hours. When a newer version is staged, the UI shows a toast and the launcher applies it on the next start. Only the app layer updates automatically; engine and models are never touched.
+- Cutting a release: `powershell -File tools\make_release.ps1 -Version 1.1.0 -Notes "what changed"`, then push the tag, upload `dist\motionlab-app-1.1.0.zip` to the GitHub release, and commit the refreshed `manifest.json`. One-time setup: create a GitHub repo, replace OWNER/REPO in `tools\make_release.ps1`, and set `manifest_url` in `app\update_config.json` to the raw URL of `manifest.json` on main.
+
 ## Notes
 
 - Everything is free and local: ComfyUI (GPL), ComfyUI-GGUF (Apache-2.0), LTX-2 weights (LTX-2 Community License), Gemma 3 encoder (Gemma Terms of Use).
