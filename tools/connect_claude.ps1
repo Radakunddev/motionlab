@@ -29,5 +29,6 @@ $server = [pscustomobject]@{
 }
 $cfg.mcpServers | Add-Member -NotePropertyName motionlab -NotePropertyValue $server -Force
 
-$cfg | ConvertTo-Json -Depth 8 | Set-Content -Path $cfgPath -Encoding utf8
+# BOM-less UTF-8: Claude Desktop's JSON parser rejects a UTF-8 BOM.
+[System.IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding $false))
 Write-Host "MotionLab connected. Restart Claude Desktop, then look for the 'motionlab' tools." -ForegroundColor Green

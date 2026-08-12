@@ -571,7 +571,7 @@ class Api:
         if p is None or not p.parent.is_dir():
             return {"installed": False, "connected": False}
         try:
-            cfg = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+            cfg = json.loads(p.read_text(encoding="utf-8-sig")) if p.is_file() else {}
         except Exception:
             cfg = {}
         entry = ((cfg.get("mcpServers") or {}).get("motionlab") or {})
@@ -589,9 +589,9 @@ class Api:
         try:
             cfg = {}
             if p.is_file():
-                p.with_suffix(".json.bak").write_bytes(p.read_bytes())
+                Path(str(p) + ".bak").write_bytes(p.read_bytes())
                 try:
-                    cfg = json.loads(p.read_text(encoding="utf-8"))
+                    cfg = json.loads(p.read_text(encoding="utf-8-sig"))
                 except Exception:
                     cfg = {}
             servers = cfg.setdefault("mcpServers", {})
